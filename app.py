@@ -216,6 +216,20 @@ async def identify_endpoint(query:str=Form(''),asin:str=Form(''),ean:str=Form(''
  if not base['name'] and not base['asin'] and not base['ean']:
   return {'error':'No he podido identificar el producto automáticamente. Prueba una foto más cercana o añade marca/modelo/EAN.'}
  base['title']=base['name'] or base['asin'] or base['ean']
+ # If we have a barcode, use it as the strongest identifier and resolve it on the public web.
+ if base.get('ean'):
+  try:
+   ean_results=web_discover('EAN '+base['ean'])
+   if ean_results:
+    base['web_candidates']=ean_results[:12]
+    # Prefer a result title that looks like a product, not a generic search page.
+    for rr in ean_results:
+     cand=(rr.get('title') or '').strip()
+     low=cand.lower()
+     if len(cand)>=6 and not any(x in low for x in ('google','bing','search','resultados')):
+      base['title']=cand[:180]; break
+    base['web_prices']=[v for rr in ean_results[:15] for v in extract_prices((rr.get('title') or '')+' '+(rr.get('snippet') or ''))][:30]
+  except Exception: pass
  # If we only have OCR/manual text, refine it against public web results.
  if base.get('name') and not base.get('brand') and not base.get('model') and not base.get('asin') and not base.get('ean'):
   try:

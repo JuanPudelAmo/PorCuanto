@@ -19,7 +19,7 @@ video{width:100%;border-radius:15px;background:#000;display:none;margin-top:10px
 .checks{display:grid;grid-template-columns:1fr 1fr;gap:7px}.checks label{margin:0;padding:9px;background:#0b1220;border:1px solid #27334c;border-radius:10px;color:#fff}
 a{color:#67e8f9}.hidden{display:none}.smallbtn{padding:9px;font-size:13px}
 @media(max-width:520px){.grid{grid-template-columns:1fr}.full{grid-column:auto}}
-</style><script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</style><script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
 </head>
 <body><main>
 <div class="top"><div class="logo">💶 PorCuanto <em>V20</em></div><div class="muted">Arbitraje rápido · Amazon · eBay · mercadillos</div></div>
@@ -216,7 +216,7 @@ $('analyze').onclick=async()=>{
   const fd=new FormData();fd.append('query',$('query').value);fd.append('asin',$('asin').value);fd.append('ean',$('ean').value);
   const file=currentBlob||$('photo').files[0];
   let local={text:'',ean:''};
-  if(file){ local=await localImageInfo(file); if(local.ean && !$('ean').value) fd.set('ean',local.ean); if(local.text && !$('query').value) fd.set('query',local.text); fd.append('image',await compress(file),'product.jpg'); }
+  if(file){ local=await localImageInfo(file); if(local.ean){ $('ean').value=local.ean; fd.set('ean',local.ean); } else if(local.text && !$('query').value) fd.set('query',local.text); fd.append('image',await compress(file),'product.jpg'); }
   // Primero intentamos identificación visual real, sin exigir una API de IA.
   let visual={results:[],page_title:'',description:''};
   if(file){
