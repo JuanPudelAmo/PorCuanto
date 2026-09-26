@@ -238,10 +238,12 @@ $('analyze').onclick=async()=>{
   const markets=[...document.querySelectorAll('input[name="market"]:checked')].map(x=>x.value);
   const md=await apiFetch('/api/markets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,asin:id.asin,ean:id.ean,markets})},45000);
   // Public web discovery is deliberately secondary and non-blocking.
-  const dw=apiFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,queries:id.search_queries||[title]})},30000).catch(()=>({results:[]}));
+  const dw=apiFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,queries:id.search_queries||[title]})},30000).catch(()=>({results:[],prices:[]}));
   const buy=+($('cost').value||0), comm=+($('commission').value||15), ship=+($('shipping').value||0), other=+($('other').value||0);
   let rows=(md.markets||[]).filter(x=>x.price!=null).map(x=>{let sale=+x.price,fees=sale*comm/100+ship+other;return {...x,sale,fees,profit:sale-buy-fees,roi:buy?(sale-buy-fees)/buy*100:0,max:sale-fees}}).sort((a,b)=>b.roi-a.roi);
   const wd=await dw;
+  const webPrices=(wd.prices||[]).map(Number).filter(x=>Number.isFinite(x)&&x>0);
+  const med=webPrices.length?webPrices.sort((a,b)=>a-b)[Math.floor(webPrices.length/2)]:null;
   let webBest=null;
   if(!rows.length && med!=null){ const fees=med*comm/100+ship+other; webBest={name:'🌐 Web (precios observados)',sale:med,fees,profit:med-buy-fees,roi:buy?(med-buy-fees)/buy*100:0,max:med-fees}; }
   const best=rows[0]||webBest;
