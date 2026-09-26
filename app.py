@@ -199,8 +199,22 @@ async def identify_endpoint(query:str=Form(''),asin:str=Form(''),ean:str=Form(''
   p=identify('data:'+(image.content_type or 'image/jpeg')+';base64,'+base64.b64encode(raw).decode())
   if p.get('error'): return {'error':p['error']}
   base.update({'name':p.get('name') or p.get('model') or base['name'], 'brand':p.get('brand'), 'model':p.get('model'), 'asin':get_asin(p.get('asin','')) or base['asin'], 'ean':get_code(p.get('ean_or_gtin','')) or base['ean']})
+ if not base['name'] and not base['asin'] and not base['ean'] and image and image.filename and not OPENAI_API_KEY:
+  try:
+   raw=await image.read()
+   vis=google_lens_search(raw,image.content_type or 'image/jpeg')
+   candidates=[]
+   if vis.get('page_title'): candidates.append(vis['page_title'])
+   candidates += [x.get('title','') for x in (vis.get('results') or []) if x.get('title')]
+   # Pick the first useful non-Google result title as a candidate.
+   for cand in candidates:
+    cand=re.sub(r'Google Lens|Lens','',cand,flags=re.I).strip(' -|')
+    if len(cand)>=4:
+     base['name']=cand[:180]; base['visual_candidates']=vis.get('results',[])[:10]; break
+  except Exception as e:
+   base['visual_error']=str(e)
  if not base['name'] and not base['asin'] and not base['ean']:
-  return {'error':'Introduce un nombre, EAN/UPC, ASIN o conecta OpenAI para analizar una foto.'}
+  return {'error':'No he podido identificar el producto automáticamente. Prueba una foto más cercana o añade marca/modelo/EAN.'}
  base['title']=base['name'] or base['asin'] or base['ean']
  # If we only have OCR/manual text, refine it against public web results.
  if base.get('name') and not base.get('brand') and not base.get('model') and not base.get('asin') and not base.get('ean'):

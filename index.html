@@ -227,12 +227,13 @@ $('analyze').onclick=async()=>{
     }catch(e){ visual={results:[],error:e.message}; }
   }
   // En paralelo, OCR/código y OpenAI opcional afinan el nombre.
-  const id=await apiFetch('/api/identify',{method:'POST',body:fd},45000);
-  if(id.error)throw Error(id.error);
+  const id=await apiFetch('/api/identify',{method:'POST',body:fd},50000).catch(e=>({error:e.message}));
   let title=id.title||id.product?.name||'';
   if(!title && visual.page_title) title=visual.page_title.replace(/Google Lens|Lens/gi,'').trim();
   if(!title && visual.results?.[0]?.title) title=visual.results[0].title;
+  if(!title && id.error && visual.results?.[0]?.title) title=visual.results[0].title;
   if(!title) title=$('query').value||'Producto';
+  if(id.error && !title) throw Error(id.error);
   res.innerHTML='<div class="stage"><b>2/3 🔎 '+esc(title)+'</b><div class="muted">'+(id.ean?'EAN '+esc(id.ean):id.asin?'ASIN '+esc(id.asin):'Sin código · modo mercadillo')+'</div><div class="bar"><i></i></div><span class="muted">Buscando mercados…</span></div>';
   const markets=[...document.querySelectorAll('input[name="market"]:checked')].map(x=>x.value);
   const md=await apiFetch('/api/markets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,asin:id.asin,ean:id.ean,markets})},45000);
@@ -240,20 +241,21 @@ $('analyze').onclick=async()=>{
   const dw=apiFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,queries:id.search_queries||[title]})},30000).catch(()=>({results:[]}));
   const buy=+($('cost').value||0), comm=+($('commission').value||15), ship=+($('shipping').value||0), other=+($('other').value||0);
   let rows=(md.markets||[]).filter(x=>x.price!=null).map(x=>{let sale=+x.price,fees=sale*comm/100+ship+other;return {...x,sale,fees,profit:sale-buy-fees,roi:buy?(sale-buy-fees)/buy*100:0,max:sale-fees}}).sort((a,b)=>b.roi-a.roi);
-  const best=rows[0];
+  const wd=await dw;
+  let webBest=null;
+  if(!rows.length && med!=null){ const fees=med*comm/100+ship+other; webBest={name:'🌐 Web (precios observados)',sale:med,fees,profit:med-buy-fees,roi:buy?(med-buy-fees)/buy*100:0,max:med-fees}; }
+  const best=rows[0]||webBest;
   let verdict=!best?'⚪ FALTAN DATOS':best.profit>=10&&best.roi>=30?'🟢 OPORTUNIDAD':best.profit>0&&best.roi>=15?'🟡 ESTUDIAR':'🔴 NO COMPRAR';
   res.innerHTML='<div class="stage"><b>3/3 💰 Resultado</b></div><div class="verdict '+(verdict.includes('OPORTUNIDAD')?'good':verdict.includes('ESTUDIAR')?'warn':'bad')+'">'+verdict+'</div>'+
    '<h2>📦 '+esc(title)+'</h2><div class="kpis"><div class="kpi"><span>Compra</span><b>'+money(buy)+'</b></div><div class="kpi"><span>Mejor venta</span><b>'+money(best?.sale)+'</b></div><div class="kpi"><span>Beneficio</span><b>'+money(best?.profit)+'</b></div><div class="kpi"><span>ROI</span><b>'+(best?best.roi.toFixed(1)+'%':'—')+'</b></div><div class="kpi"><span>Máximo pagar</span><b>'+money(best?.max)+'</b></div><div class="kpi"><span>Mejor mercado</span><b>'+esc(best?.name||'—')+'</b></div></div>'+
-   '<h2 style="margin-top:17px">🌍 Amazon/mercados</h2>'+(rows.length?rows.map(x=>'<div class="market"><span>'+esc(x.name||x.market)+'</span><b>'+money(x.sale)+'</b></div>').join(''):'<div class="muted">No hay precio disponible todavía. Comprueba las claves/API o utiliza búsqueda web.</div>')+
+   '<h2 style="margin-top:17px">🌍 Amazon/mercados</h2>'+(rows.length?rows.map(x=>'<div class="market"><span>'+esc(x.name||x.market)+'</span><b>'+money(x.sale)+'</b></div>').join(''):'<div class="muted">No hay precio directo de Amazon/eBay. Se ha intentado la comparación web pública.</div>')+
    '<div id="web"><h2 style="margin-top:17px">🌐 Internet · comparables</h2><div class="muted">Buscando referencias públicas…</div></div>'+
    '<p class="muted">No confundas precio anunciado con precio realmente vendido. Comprueba restricciones, comisiones, logística, impuestos y autenticidad antes de comprar.</p>';
-  const wd=await dw;const web=$('web');
+  const web=$('web');
   const visualHtml=(visual.results||[]).slice(0,8).map(x=>'<div class="webrow"><span>🔎 <a target="_blank" rel="noopener" href="'+x.url+'">'+esc(x.title)+'</a></span></div>').join('');
   const qurl=encodeURIComponent(title);
   const fallback='<div class="webrow"><b>⚡ Búsqueda directa:</b> <a target="_blank" href="https://www.google.com/search?q='+qurl+'">Google</a> · <a target="_blank" href="https://www.bing.com/search?q='+qurl+'">Bing</a> · <a target="_blank" href="https://www.amazon.es/s?k='+qurl+'">Amazon.es</a> · <a target="_blank" href="https://www.ebay.es/sch/i.html?_nkw='+qurl+'">eBay</a> · <a target="_blank" href="https://es.wallapop.com/app/search?keywords='+qurl+'">Wallapop</a></div>';
   const webRows=(wd.results||[]).slice(0,10).map(x=>'<div class="webrow"><span><a target="_blank" rel="noopener" href="'+x.url+'">'+esc(x.title)+'</a><small class="muted" style="display:block">'+esc(x.snippet||'')+'</small></span></div>').join('');
-  const allPrices=[...(wd.prices||[]),...(id.web_prices||[])].filter(v=>Number.isFinite(v)&&v>2&&v<10000);
-  const med=allPrices.length?allPrices.slice().sort((a,b)=>a-b)[Math.floor(allPrices.length/2)]:null;
   const priceBox=med?'<div class="stage"><b>💶 Precio observado en la web</b><br><span style="font-size:24px;font-weight:900">'+money(med)+'</span><div class="muted">Mediana de precios detectados en resultados públicos; úsala como referencia, no como precio garantizado de venta.</div></div>':'';
   if(web)web.innerHTML='<h2 style="margin-top:17px">👁️ Coincidencias visuales</h2>'+(visualHtml||'<div class="muted">No se pudo obtener una coincidencia visual automática. Se continúa con texto/código y búsqueda web.</div>')+priceBox+'<h2 style="margin-top:17px">🌐 Internet · comparables</h2>'+(webRows||'<div class="muted">El servidor no ha podido extraer resultados automáticamente.</div>')+fallback;
  }catch(e){res.innerHTML='<div class="stage"><b>❌ '+esc(e.message)+'</b><p class="muted">Si has hecho una foto, no necesitas repetirla. Revisa la configuración del servidor/API y vuelve a pulsar analizar.</p></div>'}
