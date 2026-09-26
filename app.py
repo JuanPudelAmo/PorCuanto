@@ -8,6 +8,9 @@ BASE_DIR=Path(__file__).resolve().parent
 app=FastAPI(title='PorCuanto WebApp')
 OPENAI_API_KEY=os.getenv('OPENAI_API_KEY',''); OPENAI_MODEL=os.getenv('OPENAI_MODEL','gpt-5.6-luna'); OPENAI_TIMEOUT=float(os.getenv('OPENAI_TIMEOUT','18'))
 KEEPA_API_KEY=os.getenv('KEEPA_API_KEY',''); EBAY_CLIENT_ID=os.getenv('EBAY_CLIENT_ID',''); EBAY_CLIENT_SECRET=os.getenv('EBAY_CLIENT_SECRET',''); EBAY_MARKETPLACE_ID=os.getenv('EBAY_MARKETPLACE_ID','EBAY_ES')
+UPCITEMDB_URL='https://api.upcitemdb.com/prod/trial/lookup'
+BARCODELOOKUP_API_KEY=os.getenv('BARCODELOOKUP_API_KEY','')
+
 MARKETS={
  'ES':('🇪🇸','Amazon.es','amazon.es',9,'EUR'),'DE':('🇩🇪','Amazon.de','amazon.de',3,'EUR'),'FR':('🇫🇷','Amazon.fr','amazon.fr',4,'EUR'),'IT':('🇮🇹','Amazon.it','amazon.it',8,'EUR'),'UK':('🇬🇧','Amazon.co.uk','amazon.co.uk',2,'GBP'),
  'NL':('🇳🇱','Amazon.nl','amazon.nl',None,'EUR'),'BE':('🇧🇪','Amazon.com.be','amazon.com.be',None,'EUR'),'PL':('🇵🇱','Amazon.pl','amazon.pl',None,'PLN'),'SE':('🇸🇪','Amazon.se','amazon.se',None,'SEK'),'IE':('🇮🇪','Amazon.ie','amazon.ie',None,'EUR'),'TR':('🇹🇷','Amazon.com.tr','amazon.com.tr',None,'TRY')}
@@ -20,6 +23,40 @@ def get_asin(v):
  m=re.search(r'(?:dp/|gp/product/|product/)([A-Z0-9]{10})|\b(B0[A-Z0-9]{8})\b',v or '',re.I); return (m.group(1) or m.group(2)).upper() if m else None
 def get_code(v):
  m=re.search(r'\b\d{8,14}\b',v or ''); return m.group() if m else None
+def upcitemdb_lookup(code):
+    """Resolve EAN/UPC/GTIN through UPCitemdb's free trial endpoint.
+    The free Explorer currently allows lookup without registration, so this is
+    an automatic accelerator rather than a required user API key.
+    """
+    code=get_code(str(code or ''))
+    if not code:return {}
+    try:
+        rr=requests.get(UPCITEMDB_URL,params={'upc':code},headers={'Accept':'application/json','User-Agent':'PorCuanto/25'},timeout=10)
+        if rr.status_code==200:
+            d=rr.json() or {}; item=(d.get('items') or [None])[0]
+            if item:
+                offers=item.get('offers') or []
+                prices=[]
+                for o in offers:
+                    try:
+                        v=float(o.get('price'))
+                        if 0<v<100000: prices.append(v)
+                    except: pass
+                for k in ('lowest_recorded_price','highest_recorded_price'):
+                    try:
+                        v=float(item.get(k))
+                        if v>0: prices.append(v)
+                    except: pass
+                return {'found':True,'source':'UPCitemdb','title':item.get('title') or '',
+                        'brand':item.get('brand') or '', 'model':item.get('model') or '',
+                        'ean':item.get('ean') or item.get('gtin') or code,
+                        'asin':item.get('asin') or '', 'category':item.get('category') or '',
+                        'description':item.get('description') or '', 'images':item.get('images') or [],
+                        'prices':prices[:20], 'offers':offers[:10]}
+        return {'found':False,'source':'UPCitemdb','status':rr.status_code}
+    except Exception as e:
+        return {'found':False,'source':'UPCitemdb','error':str(e)}
+
 def keepa_product(asin=None,code=None,domain=9):
  if not KEEPA_API_KEY:return {'enabled':False,'error':'Falta KEEPA_API_KEY'}
  p={'key':KEEPA_API_KEY,'domain':domain};
@@ -215,28 +252,51 @@ async def identify_endpoint(query:str=Form(''),asin:str=Form(''),ean:str=Form(''
    base['visual_error']=str(e)
  if not base['name'] and not base['asin'] and not base['ean']:
   return {'error':'No he podido identificar el producto automáticamente. Prueba una foto más cercana o añade marca/modelo/EAN.'}
- base['title']=base['name'] or base['asin'] or base['ean']
- # If we have a barcode, use it as the strongest identifier and resolve it on the public web.
+ base['title']=base['name'] or base['asin'] or ('EAN '+base['ean'] if base.get('ean') else '')
+ # Barcode resolution is now DB-first, then web. The raw EAN must never be used as the product name.
  if base.get('ean'):
   try:
-   ean_results=web_discover('EAN '+base['ean'])
-   if ean_results:
-    base['web_candidates']=ean_results[:12]
-    # Prefer a result title that looks like a product, not a generic search page.
-    for rr in ean_results:
-     cand=(rr.get('title') or '').strip()
-     low=cand.lower()
-     if len(cand)>=6 and not any(x in low for x in ('google','bing','search','resultados')):
-      base['title']=cand[:180]; break
-    base['web_prices']=[v for rr in ean_results[:15] for v in extract_prices((rr.get('title') or '')+' '+(rr.get('snippet') or ''))][:30]
-  except Exception: pass
+   db=upcitemdb_lookup(base['ean'])
+   if db.get('found'):
+    base['barcode_db']=db
+    base.update({
+      'name':db.get('title') or base.get('name'),
+      'brand':db.get('brand') or base.get('brand'),
+      'model':db.get('model') or base.get('model'),
+      'asin':get_asin(db.get('asin','')) or base.get('asin'),
+      'ean':get_code(db.get('ean','')) or base.get('ean')
+    })
+    base['title']=db.get('title') or base.get('title')
+    base['db_prices']=db.get('prices') or []
+   ean_queries=['EAN '+base['ean'], '"'+base['ean']+'"', base['ean']+' producto']
+   if base.get('brand'): ean_queries.append(base['brand']+' '+base['ean'])
+   if base.get('model'): ean_queries.append(base['model']+' '+base['ean'])
+   ean_results=[]
+   for eq in ean_queries:
+    ean_results.extend(web_discover(eq))
+    if len(ean_results)>=20: break
+   seen=set(); unique=[]
+   for rr in ean_results:
+    if rr.get('url') not in seen: seen.add(rr.get('url')); unique.append(rr)
+   if unique:
+    base['web_candidates']=unique[:15]
+    # Only replace the DB title when it is still empty/weak.
+    if not base.get('title') or base.get('title')==base.get('ean'):
+     for rr in unique:
+      cand=(rr.get('title') or '').strip()
+      low=cand.lower()
+      if len(cand)>=6 and not any(x in low for x in ('google','bing','search','resultados','ean ')):
+       base['title']=cand[:180]; break
+    base['web_prices']=[v for rr in unique[:20] for v in extract_prices((rr.get('title') or '')+' '+(rr.get('snippet') or ''))][:40]
+  except Exception as ex:
+   base['barcode_error']=str(ex)
  # If we only have OCR/manual text, refine it against public web results.
  if base.get('name') and not base.get('brand') and not base.get('model') and not base.get('asin') and not base.get('ean'):
   try:
    smart=smart_candidate_from_web(base['name'])
    if smart.get('title'): base['title']=smart['title']; base['web_candidates']=smart['results']; base['web_prices']=smart['prices']
   except Exception: pass
- base['search_queries']=[x for x in [base['title'], base.get('brand'), base.get('model')] if x]
+ base['search_queries']=[x for x in [base['title'], base.get('brand'), base.get('model'), base.get('ean')] if x]
  return base
 
 @app.post('/api/markets')

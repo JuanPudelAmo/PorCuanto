@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>PorCuanto V20 · Identificación visual + comparación web</title>
+<title>PorCuanto V25 · Identificación visual + comparación web</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#080d18;color:#f4f7fb;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
 main{max-width:760px;margin:auto;padding:16px}.top{padding:8px 0 15px}.logo{font-size:30px;font-weight:950}.logo em{color:#67e8f9;font-style:normal}.muted{color:#96a4ba;font-size:12px}.card{background:#121a2c;border:1px solid #27334c;border-radius:20px;padding:15px;margin:11px 0}
@@ -17,12 +17,12 @@ video{width:100%;border-radius:15px;background:#000;display:none;margin-top:10px
 .verdict{text-align:center;font-size:24px;font-weight:950;padding:15px;border-radius:15px;background:#0b1220;margin-bottom:10px}.good{border:1px solid #57e389}.warn{border:1px solid #ffd166}.bad{border:1px solid #ff6b6b}
 .market,.webrow{display:flex;gap:8px;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #27334c}.market:last-child,.webrow:last-child{border:0}.market b{font-size:17px}
 .checks{display:grid;grid-template-columns:1fr 1fr;gap:7px}.checks label{margin:0;padding:9px;background:#0b1220;border:1px solid #27334c;border-radius:10px;color:#fff}
-a{color:#67e8f9}.hidden{display:none}.smallbtn{padding:9px;font-size:13px}
+a{color:#67e8f9}.hidden{display:none}.analysis-overlay{position:fixed;inset:0;background:rgba(3,7,15,.88);backdrop-filter:blur(8px);z-index:9999;display:none;align-items:center;justify-content:center;padding:18px}.analysis-overlay.show{display:flex}.analysis-card{width:min(560px,100%);background:#121a2c;border:1px solid #33415e;border-radius:24px;padding:24px;box-shadow:0 20px 80px rgba(0,0,0,.45)}.analysis-title{font-size:26px;font-weight:950;margin-bottom:6px}.analysis-sub{color:#aebbd0;font-size:14px;margin-bottom:18px}.spinner{width:52px;height:52px;border:5px solid #27334c;border-top-color:#67e8f9;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 18px}@keyframes spin{to{transform:rotate(360deg)}}.analysis-step{display:flex;gap:10px;align-items:center;padding:10px 12px;margin:7px 0;background:#0b1220;border-radius:12px;color:#8f9db4}.analysis-step.active{color:#fff;border:1px solid #38506d}.analysis-step.done{color:#67e8f9}.analysis-note{margin-top:14px;text-align:center;color:#96a4ba;font-size:12px}.smallbtn{padding:9px;font-size:13px}
 @media(max-width:520px){.grid{grid-template-columns:1fr}.full{grid-column:auto}}
 </style><script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
 </head>
-<body><main>
-<div class="top"><div class="logo">💶 PorCuanto <em>V20</em></div><div class="muted">Arbitraje rápido · Amazon · eBay · mercadillos</div></div>
+<body><div id="analysisOverlay" class="analysis-overlay" aria-live="polite"><div class="analysis-card"><div class="spinner"></div><div class="analysis-title">Analizando producto…</div><div id="analysisSub" class="analysis-sub">No cierres la aplicación mientras hacemos la búsqueda.</div><div id="analysisSteps"><div class="analysis-step active" data-step="1">🔎 <span>Detectando código y texto</span></div><div class="analysis-step" data-step="2">🧠 <span>Identificando el producto</span></div><div class="analysis-step" data-step="3">🌍 <span>Comparando mercados y precios</span></div><div class="analysis-step" data-step="4">💰 <span>Calculando beneficio y máximo a pagar</span></div></div><div id="analysisNote" class="analysis-note">Esto puede tardar unos segundos.</div></div></div><main>
+<div class="top"><div class="logo">💶 PorCuanto <em>V25</em></div><div class="muted">Arbitraje rápido · Amazon · eBay · mercadillos</div></div>
 
 <section class="card">
 <h2>📸 1. Encuentra el producto</h2>
@@ -115,6 +115,15 @@ EBAY_CLIENT_SECRET=tu_client_secret</pre>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 const $=x=>document.getElementById(x), esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])), money=v=>v==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(v);
 let stream=null, currentBlob=null;
+function analysisUI(step,title,sub){
+  const ov=$('analysisOverlay'); ov.classList.add('show');
+  const labels=['Detectando código y texto','Identificando el producto','Comparando mercados y precios','Calculando beneficio y máximo a pagar'];
+  document.querySelectorAll('#analysisSteps .analysis-step').forEach((el,i)=>{el.classList.toggle('active',i===step-1);el.classList.toggle('done',i<step-1);});
+  $('.analysis-title').textContent=title||'Analizando producto…';
+  $('analysisSub').textContent=sub||labels[step-1]||'Procesando…';
+  $('analysisNote').textContent='PorCuanto está trabajando. No pulses ANALIZAR otra vez.';
+}
+function hideAnalysisUI(){setTimeout(()=>$('analysisOverlay').classList.remove('show'),450);}
 
 function showPhoto(blob){
  currentBlob=blob; $('preview').src=URL.createObjectURL(blob); $('preview').style.display='block';
@@ -180,9 +189,19 @@ async function localImageInfo(file){
    const codes=await bd.detect(bmp); if(codes[0]?.rawValue) out.ean=codes[0].rawValue;
   }
  }catch(e){}
+ if(!out.ean){
+  try{
+   const B=window.ZXingBrowser;
+   if(B?.BrowserMultiFormatReader){
+    const reader=new B.BrowserMultiFormatReader(); const img=new Image(); const url=URL.createObjectURL(file);
+    await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url;});
+    const result=await reader.decodeFromImageElement(img); out.ean=result?.getText?.()||result?.text||''; URL.revokeObjectURL(url); reader.reset?.();
+   }
+  }catch(e){}
+ }
  try{
   if(window.Tesseract){
-   $('photoInfo').textContent='🔎 Leyendo texto de la etiqueta (sin API)…';
+   $('photoInfo').textContent='🔎 Leyendo texto de la etiqueta…';
    const r=await Tesseract.recognize(file,'eng+spa',{logger:m=>{if(m.status==='recognizing text'&&m.progress>.1)$('photoInfo').textContent='🔎 Leyendo etiqueta… '+Math.round(m.progress*100)+'%';}});
    out.text=(r.data.text||'').replace(/\s+/g,' ').trim().slice(0,500);
   }
@@ -210,58 +229,66 @@ function serverRequired(){
 }
 $('analyze').onclick=async()=>{
  const res=$('results'), btn=$('analyze');btn.disabled=true;res.classList.remove('hidden');
- res.innerHTML='<div class="stage"><b>1/3 ⚡ Identificando sin API…</b><div class="bar"><i></i></div><span class="muted">La búsqueda de precios todavía no ha empezado.</span></div>';
+ btn.textContent='⏳ ANALIZANDO…';
+ analysisUI(1,'Analizando producto…','Detectando código de barras, texto y datos de la foto.');
  try{
   serverRequired();
   const fd=new FormData();fd.append('query',$('query').value);fd.append('asin',$('asin').value);fd.append('ean',$('ean').value);
   const file=currentBlob||$('photo').files[0];
   let local={text:'',ean:''};
-  if(file){ local=await localImageInfo(file); if(local.ean){ $('ean').value=local.ean; fd.set('ean',local.ean); } else if(local.text && !$('query').value) fd.set('query',local.text); fd.append('image',await compress(file),'product.jpg'); }
-  // Primero intentamos identificación visual real, sin exigir una API de IA.
+  if(file){
+   local=await localImageInfo(file);
+   if(local.ean){ $('ean').value=local.ean; fd.set('ean',local.ean); }
+   else if(local.text && !$('query').value) fd.set('query',local.text);
+   fd.append('image',await compress(file),'product.jpg');
+  }
+  analysisUI(2,'Identificando el producto…',local.ean?'EAN detectado: '+local.ean+' · buscando qué producto corresponde.':'Buscando coincidencias del producto en la web.');
   let visual={results:[],page_title:'',description:''};
   if(file){
-    $('photoInfo').textContent='👁️ Buscando coincidencias visuales en la web…';
-    try{
-      const vf=new FormData();vf.append('image',await compress(file),'product.jpg');
-      visual=await apiFetch('/api/visual-search',{method:'POST',body:vf},45000);
-    }catch(e){ visual={results:[],error:e.message}; }
+    try{const vf=new FormData();vf.append('image',await compress(file),'product.jpg');visual=await apiFetch('/api/visual-search',{method:'POST',body:vf},45000);}catch(e){visual={results:[],error:e.message};}
   }
-  // En paralelo, OCR/código y OpenAI opcional afinan el nombre.
-  const id=await apiFetch('/api/identify',{method:'POST',body:fd},50000).catch(e=>({error:e.message}));
-  let title=id.title||id.product?.name||'';
+  const id=await apiFetch('/api/identify',{method:'POST',body:fd},50000);
+  let title=id.title||id.name||id.product?.name||'';
   if(!title && visual.page_title) title=visual.page_title.replace(/Google Lens|Lens/gi,'').trim();
   if(!title && visual.results?.[0]?.title) title=visual.results[0].title;
-  if(!title && id.error && visual.results?.[0]?.title) title=visual.results[0].title;
-  if(!title) title=$('query').value||'Producto';
-  if(id.error && !title) throw Error(id.error);
-  res.innerHTML='<div class="stage"><b>2/3 🔎 '+esc(title)+'</b><div class="muted">'+(id.ean?'EAN '+esc(id.ean):id.asin?'ASIN '+esc(id.asin):'Sin código · modo mercadillo')+'</div><div class="bar"><i></i></div><span class="muted">Buscando mercados…</span></div>';
+  if(!title) title=$('query').value||((id.ean)?'Producto con EAN '+id.ean:'Producto');
+  // Never show a raw EAN as if it were the product name when resolution failed.
+  if(/^EAN\s+\d{8,14}$/.test(title)) title='Producto no identificado · EAN '+id.ean;
+  $('ean').value=id.ean||$('ean').value;
+  $('query').value=id.name||$('query').value;
+  analysisUI(3,'Comparando precios…','Producto: '+title+' · consultando Amazon/mercados y referencias públicas.');
   const markets=[...document.querySelectorAll('input[name="market"]:checked')].map(x=>x.value);
   const md=await apiFetch('/api/markets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,asin:id.asin,ean:id.ean,markets})},45000);
-  // Public web discovery is deliberately secondary and non-blocking.
-  const dw=apiFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,queries:id.search_queries||[title]})},30000).catch(()=>({results:[],prices:[]}));
+  const queries=[...(id.search_queries||[]),title].filter(Boolean).slice(0,5);
+  const dw=apiFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,queries})},30000).catch(()=>({results:[],prices:[]}));
   const buy=+($('cost').value||0), comm=+($('commission').value||15), ship=+($('shipping').value||0), other=+($('other').value||0);
   let rows=(md.markets||[]).filter(x=>x.price!=null).map(x=>{let sale=+x.price,fees=sale*comm/100+ship+other;return {...x,sale,fees,profit:sale-buy-fees,roi:buy?(sale-buy-fees)/buy*100:0,max:sale-fees}}).sort((a,b)=>b.roi-a.roi);
   const wd=await dw;
-  const webPrices=(wd.prices||[]).map(Number).filter(x=>Number.isFinite(x)&&x>0);
-  const med=webPrices.length?webPrices.sort((a,b)=>a-b)[Math.floor(webPrices.length/2)]:null;
+  const webPrices=[...(id.db_prices||[]),...(id.web_prices||[]),...(wd.prices||[])].map(Number).filter(x=>Number.isFinite(x)&&x>0&&x<100000);
+  const sorted=[...webPrices].sort((a,b)=>a-b); const med=sorted.length?sorted[Math.floor(sorted.length/2)]:null;
   let webBest=null;
-  if(!rows.length && med!=null){ const fees=med*comm/100+ship+other; webBest={name:'🌐 Web (precios observados)',sale:med,fees,profit:med-buy-fees,roi:buy?(med-buy-fees)/buy*100:0,max:med-fees}; }
+  if(!rows.length && med!=null){ const fees=med*comm/100+ship+other; webBest={name:'🌐 Web · precio observado',sale:med,fees,profit:med-buy-fees,roi:buy?(med-buy-fees)/buy*100:0,max:med-fees}; }
   const best=rows[0]||webBest;
   let verdict=!best?'⚪ FALTAN DATOS':best.profit>=10&&best.roi>=30?'🟢 OPORTUNIDAD':best.profit>0&&best.roi>=15?'🟡 ESTUDIAR':'🔴 NO COMPRAR';
+  analysisUI(4,'Calculando oportunidad…','Calculando beneficio, ROI y precio máximo que deberías pagar.');
   res.innerHTML='<div class="stage"><b>3/3 💰 Resultado</b></div><div class="verdict '+(verdict.includes('OPORTUNIDAD')?'good':verdict.includes('ESTUDIAR')?'warn':'bad')+'">'+verdict+'</div>'+
    '<h2>📦 '+esc(title)+'</h2><div class="kpis"><div class="kpi"><span>Compra</span><b>'+money(buy)+'</b></div><div class="kpi"><span>Mejor venta</span><b>'+money(best?.sale)+'</b></div><div class="kpi"><span>Beneficio</span><b>'+money(best?.profit)+'</b></div><div class="kpi"><span>ROI</span><b>'+(best?best.roi.toFixed(1)+'%':'—')+'</b></div><div class="kpi"><span>Máximo pagar</span><b>'+money(best?.max)+'</b></div><div class="kpi"><span>Mejor mercado</span><b>'+esc(best?.name||'—')+'</b></div></div>'+
-   '<h2 style="margin-top:17px">🌍 Amazon/mercados</h2>'+(rows.length?rows.map(x=>'<div class="market"><span>'+esc(x.name||x.market)+'</span><b>'+money(x.sale)+'</b></div>').join(''):'<div class="muted">No hay precio directo de Amazon/eBay. Se ha intentado la comparación web pública.</div>')+
+   '<h2 style="margin-top:17px">🌍 Amazon/mercados</h2>'+(rows.length?rows.map(x=>'<div class="market"><span>'+esc(x.name||x.market)+'</span><b>'+money(x.sale)+'</b></div>').join(''):'<div class="muted">No hay precio directo. Se ha comparado con bases de producto y búsqueda web pública.</div>')+
    '<div id="web"><h2 style="margin-top:17px">🌐 Internet · comparables</h2><div class="muted">Buscando referencias públicas…</div></div>'+
-   '<p class="muted">No confundas precio anunciado con precio realmente vendido. Comprueba restricciones, comisiones, logística, impuestos y autenticidad antes de comprar.</p>';
+   '<p class="muted">Los precios web son referencias observadas; comprueba que correspondan exactamente al mismo modelo, estado y contenido antes de comprar.</p>';
   const web=$('web');
+  const db=id.barcode_db;
+  const dbBox=db?.found?'<div class="stage"><b>✅ Producto localizado por código de barras</b><br><span>'+esc(db.title||title)+'</span>'+(db.brand?'<br><span class="muted">Marca: '+esc(db.brand)+(db.model?' · Modelo: '+esc(db.model):'')+'</span>':'')+'</div>':'';
   const visualHtml=(visual.results||[]).slice(0,8).map(x=>'<div class="webrow"><span>🔎 <a target="_blank" rel="noopener" href="'+x.url+'">'+esc(x.title)+'</a></span></div>').join('');
-  const qurl=encodeURIComponent(title);
-  const fallback='<div class="webrow"><b>⚡ Búsqueda directa:</b> <a target="_blank" href="https://www.google.com/search?q='+qurl+'">Google</a> · <a target="_blank" href="https://www.bing.com/search?q='+qurl+'">Bing</a> · <a target="_blank" href="https://www.amazon.es/s?k='+qurl+'">Amazon.es</a> · <a target="_blank" href="https://www.ebay.es/sch/i.html?_nkw='+qurl+'">eBay</a> · <a target="_blank" href="https://es.wallapop.com/app/search?keywords='+qurl+'">Wallapop</a></div>';
   const webRows=(wd.results||[]).slice(0,10).map(x=>'<div class="webrow"><span><a target="_blank" rel="noopener" href="'+x.url+'">'+esc(x.title)+'</a><small class="muted" style="display:block">'+esc(x.snippet||'')+'</small></span></div>').join('');
-  const priceBox=med?'<div class="stage"><b>💶 Precio observado en la web</b><br><span style="font-size:24px;font-weight:900">'+money(med)+'</span><div class="muted">Mediana de precios detectados en resultados públicos; úsala como referencia, no como precio garantizado de venta.</div></div>':'';
-  if(web)web.innerHTML='<h2 style="margin-top:17px">👁️ Coincidencias visuales</h2>'+(visualHtml||'<div class="muted">No se pudo obtener una coincidencia visual automática. Se continúa con texto/código y búsqueda web.</div>')+priceBox+'<h2 style="margin-top:17px">🌐 Internet · comparables</h2>'+(webRows||'<div class="muted">El servidor no ha podido extraer resultados automáticamente.</div>')+fallback;
- }catch(e){res.innerHTML='<div class="stage"><b>❌ '+esc(e.message)+'</b><p class="muted">Si has hecho una foto, no necesitas repetirla. Revisa la configuración del servidor/API y vuelve a pulsar analizar.</p></div>'}
- btn.disabled=false;
+  const priceBox=med?'<div class="stage"><b>💶 Precio observado en la web</b><br><span style="font-size:24px;font-weight:900">'+money(med)+'</span><div class="muted">Mediana de referencias detectadas. No es una garantía de venta.</div></div>':'';
+  const qurl=encodeURIComponent(title+(id.ean?' '+id.ean:''));
+  const fallback='<div class="webrow"><b>⚡ Buscar el producto:</b> <a target="_blank" href="https://www.google.com/search?q='+qurl+'">Google</a> · <a target="_blank" href="https://www.amazon.es/s?k='+qurl+'">Amazon.es</a> · <a target="_blank" href="https://www.ebay.es/sch/i.html?_nkw='+qurl+'">eBay</a> · <a target="_blank" href="https://es.wallapop.com/app/search?keywords='+qurl+'">Wallapop</a></div>';
+  if(web)web.innerHTML=dbBox+priceBox+'<h2 style="margin-top:17px">👁️ Coincidencias visuales</h2>'+(visualHtml||'<div class="muted">Sin coincidencia visual automática.</div>')+'<h2 style="margin-top:17px">🌐 Internet · comparables</h2>'+(webRows||'<div class="muted">El servidor no ha podido extraer resultados automáticamente.</div>')+fallback;
+  hideAnalysisUI();
+ }catch(e){
+  hideAnalysisUI();res.innerHTML='<div class="stage"><b>❌ '+esc(e.message)+'</b><p class="muted">La búsqueda se ha detenido. Puedes volver a pulsar analizar.</p></div>';
+ }finally{btn.disabled=false;btn.textContent='🚀 ANALIZAR OPORTUNIDAD';}
 };
 
 async function refreshApiStatus(){
