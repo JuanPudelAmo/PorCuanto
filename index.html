@@ -244,10 +244,9 @@ $('analyze').onclick=async()=>{
   }
   analysisUI(2,'Identificando el producto…',local.ean?'EAN detectado: '+local.ean+' · buscando qué producto corresponde.':'Buscando coincidencias del producto en la web.');
   let visual={results:[],page_title:'',description:''};
-  if(file){
-    try{const vf=new FormData();vf.append('image',await compress(file),'product.jpg');visual=await apiFetch('/api/visual-search',{method:'POST',body:vf},45000);}catch(e){visual={results:[],error:e.message};}
-  }
-  const id=await apiFetch('/api/identify',{method:'POST',body:fd},50000);
+  // La búsqueda visual NO bloquea el análisis principal. Se ejecuta en segundo plano.
+  const visualPromise=file?(async()=>{try{const vf=new FormData();vf.append('image',await compress(file),'product.jpg');return await apiFetch('/api/visual-search',{method:'POST',body:vf},12000);}catch(e){return {results:[],error:e.message};}})():Promise.resolve(visual);
+  const id=await apiFetch('/api/identify',{method:'POST',body:fd},18000);
   let title=id.title||id.name||id.product?.name||'';
   if(!title && visual.page_title) title=visual.page_title.replace(/Google Lens|Lens/gi,'').trim();
   if(!title && visual.results?.[0]?.title) title=visual.results[0].title;
@@ -258,13 +257,13 @@ $('analyze').onclick=async()=>{
   $('query').value=id.name||$('query').value;
   analysisUI(3,'Comparando precios…','Producto: '+title+' · consultando Amazon/mercados y referencias públicas.');
   const markets=[...document.querySelectorAll('input[name="market"]:checked')].map(x=>x.value);
-  const md=await apiFetch('/api/markets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,asin:id.asin,ean:id.ean,markets})},45000);
-  const queries=[...(id.search_queries||[]),title].filter(Boolean).slice(0,5);
-  const dw=apiFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,queries})},30000).catch(()=>({results:[],prices:[]}));
+  const md=await apiFetch('/api/markets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,asin:id.asin,ean:id.ean,markets})},15000);
+  const queries=[...(id.search_queries||[]),title].filter(Boolean).slice(0,2);
+  const dw=apiFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,queries})},8000).catch(()=>({results:[],prices:[]}));
   const buy=+($('cost').value||0), comm=+($('commission').value||15), ship=+($('shipping').value||0), other=+($('other').value||0);
   let rows=(md.markets||[]).filter(x=>x.price!=null).map(x=>{let sale=+x.price,fees=sale*comm/100+ship+other;return {...x,sale,fees,profit:sale-buy-fees,roi:buy?(sale-buy-fees)/buy*100:0,max:sale-fees}}).sort((a,b)=>b.roi-a.roi);
-  const wd=await dw;
-  const webPrices=[...(id.db_prices||[]),...(id.web_prices||[]),...(wd.prices||[])].map(Number).filter(x=>Number.isFinite(x)&&x>0&&x<100000);
+  const wd={results:[],prices:[]};
+  const webPrices=[...(id.db_prices||[]),...(id.web_prices||[])].map(Number).filter(x=>Number.isFinite(x)&&x>0&&x<100000);
   const sorted=[...webPrices].sort((a,b)=>a-b); const med=sorted.length?sorted[Math.floor(sorted.length/2)]:null;
   let webBest=null;
   if(!rows.length && med!=null){ const fees=med*comm/100+ship+other; webBest={name:'🌐 Web · precio observado',sale:med,fees,profit:med-buy-fees,roi:buy?(med-buy-fees)/buy*100:0,max:med-fees}; }
@@ -284,8 +283,14 @@ $('analyze').onclick=async()=>{
   const priceBox=med?'<div class="stage"><b>💶 Precio observado en la web</b><br><span style="font-size:24px;font-weight:900">'+money(med)+'</span><div class="muted">Mediana de referencias detectadas. No es una garantía de venta.</div></div>':'';
   const qurl=encodeURIComponent(title+(id.ean?' '+id.ean:''));
   const fallback='<div class="webrow"><b>⚡ Buscar el producto:</b> <a target="_blank" href="https://www.google.com/search?q='+qurl+'">Google</a> · <a target="_blank" href="https://www.amazon.es/s?k='+qurl+'">Amazon.es</a> · <a target="_blank" href="https://www.ebay.es/sch/i.html?_nkw='+qurl+'">eBay</a> · <a target="_blank" href="https://es.wallapop.com/app/search?keywords='+qurl+'">Wallapop</a></div>';
-  if(web)web.innerHTML=dbBox+priceBox+'<h2 style="margin-top:17px">👁️ Coincidencias visuales</h2>'+(visualHtml||'<div class="muted">Sin coincidencia visual automática.</div>')+'<h2 style="margin-top:17px">🌐 Internet · comparables</h2>'+(webRows||'<div class="muted">El servidor no ha podido extraer resultados automáticamente.</div>')+fallback;
+  if(web)web.innerHTML=dbBox+priceBox+'<h2 style="margin-top:17px">👁️ Coincidencias visuales</h2><div class="muted">Buscando coincidencias visuales en segundo plano…</div><h2 style="margin-top:17px">🌐 Internet · comparables</h2><div class="muted">Buscando referencias públicas en segundo plano…</div>'+fallback;
   hideAnalysisUI();
+  // Enriquecemos el resultado después: la pantalla principal nunca queda bloqueada esperando Lens/web.
+  Promise.all([visualPromise,dw]).then(([vv,ww])=>{
+    const visualHtml2=(vv.results||[]).slice(0,8).map(x=>'<div class="webrow"><span>🔎 <a target="_blank" rel="noopener" href="'+x.url+'">'+esc(x.title)+'</a></span></div>').join('');
+    const webRows2=(ww.results||[]).slice(0,10).map(x=>'<div class="webrow"><span><a target="_blank" href="'+x.url+'">'+esc(x.title)+'</a></span></div>').join('');
+    if(web)web.innerHTML=dbBox+priceBox+'<h2 style="margin-top:17px">👁️ Coincidencias visuales</h2>'+(visualHtml2||'<div class="muted">Sin coincidencia visual automática.</div>')+'<h2 style="margin-top:17px">🌐 Internet · comparables</h2>'+(webRows2||'<div class="muted">No se han encontrado referencias automáticas.</div>')+fallback;
+  }).catch(()=>{});
  }catch(e){
   hideAnalysisUI();res.innerHTML='<div class="stage"><b>❌ '+esc(e.message)+'</b><p class="muted">La búsqueda se ha detenido. Puedes volver a pulsar analizar.</p></div>';
  }finally{btn.disabled=false;btn.textContent='🚀 ANALIZAR OPORTUNIDAD';}

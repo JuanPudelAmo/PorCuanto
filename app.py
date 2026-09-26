@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 BASE_DIR=Path(__file__).resolve().parent
 app=FastAPI(title='PorCuanto WebApp')
-OPENAI_API_KEY=os.getenv('OPENAI_API_KEY',''); OPENAI_MODEL=os.getenv('OPENAI_MODEL','gpt-5.6-luna'); OPENAI_TIMEOUT=float(os.getenv('OPENAI_TIMEOUT','18'))
+OPENAI_API_KEY=os.getenv('OPENAI_API_KEY',''); OPENAI_MODEL=os.getenv('OPENAI_MODEL','gpt-5.6-luna'); OPENAI_TIMEOUT=float(os.getenv('OPENAI_TIMEOUT','10'))
 KEEPA_API_KEY=os.getenv('KEEPA_API_KEY',''); EBAY_CLIENT_ID=os.getenv('EBAY_CLIENT_ID',''); EBAY_CLIENT_SECRET=os.getenv('EBAY_CLIENT_SECRET',''); EBAY_MARKETPLACE_ID=os.getenv('EBAY_MARKETPLACE_ID','EBAY_ES')
 UPCITEMDB_URL='https://api.upcitemdb.com/prod/trial/lookup'
 BARCODELOOKUP_API_KEY=os.getenv('BARCODELOOKUP_API_KEY','')
@@ -31,7 +31,7 @@ def upcitemdb_lookup(code):
     code=get_code(str(code or ''))
     if not code:return {}
     try:
-        rr=requests.get(UPCITEMDB_URL,params={'upc':code},headers={'Accept':'application/json','User-Agent':'PorCuanto/25'},timeout=10)
+        rr=requests.get(UPCITEMDB_URL,params={'upc':code},headers={'Accept':'application/json','User-Agent':'PorCuanto/26'},timeout=4)
         if rr.status_code==200:
             d=rr.json() or {}; item=(d.get('items') or [None])[0]
             if item:
@@ -63,7 +63,7 @@ def keepa_product(asin=None,code=None,domain=9):
  if asin:p['asin']=asin
  elif code:p['code']=code
  try:
-  d=requests.get('https://api.keepa.com/product',params=p,timeout=12).json(); x=(d.get('products') or [None])[0]
+  d=requests.get('https://api.keepa.com/product',params=p,timeout=7).json(); x=(d.get('products') or [None])[0]
   if not x:return {'enabled':True,'error':d.get('error',{}).get('message','Producto no encontrado')}
   c=x.get('csv') or []; ap=cents(c[0][-1]) if len(c)>0 and c[0] else None; np=cents(c[1][-1]) if len(c)>1 and c[1] else None; bb=cents(x.get('buyBoxPrice')) or np or ap
   rank=c[3][-1] if len(c)>3 and c[3] and c[3][-1]>=0 else None
@@ -72,7 +72,7 @@ def keepa_product(asin=None,code=None,domain=9):
 def keepa_search(q,domain):
  if not KEEPA_API_KEY or not q:return {}
  try:
-  d=requests.get('https://api.keepa.com/search',params={'key':KEEPA_API_KEY,'domain':domain,'type':'product','term':q,'page':0},timeout=12).json()
+  d=requests.get('https://api.keepa.com/search',params={'key':KEEPA_API_KEY,'domain':domain,'type':'product','term':q,'page':0},timeout=7).json()
   for av in (d.get('asinList') or [])[:5]:
    x=keepa_product(asin=av,domain=domain)
    if x.get('asin'):return x
@@ -95,7 +95,7 @@ def ebay(q):
  t=ebay_token()
  if not t:return {'enabled':False,'items':[]}
  try:
-  d=requests.get('https://api.ebay.com/buy/browse/v1/item_summary/search',params={'q':q,'limit':12,'sort':'price'},headers={'Authorization':f'Bearer {t}','X-EBAY-C-MARKETPLACE-ID':EBAY_MARKETPLACE_ID,'Accept-Language':'es-ES'},timeout=12).json(); out=[]
+  d=requests.get('https://api.ebay.com/buy/browse/v1/item_summary/search',params={'q':q,'limit':12,'sort':'price'},headers={'Authorization':f'Bearer {t}','X-EBAY-C-MARKETPLACE-ID':EBAY_MARKETPLACE_ID,'Accept-Language':'es-ES'},timeout=7).json(); out=[]
   for x in d.get('itemSummaries',[]):
    try:v=float(x.get('price',{}).get('value'))
    except:v=None
@@ -118,13 +118,13 @@ def google_lens_search(raw, content_type='image/jpeg'):
         headers={'User-Agent':'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/136 Mobile Safari/537.36','Accept-Language':'es-ES,es;q=0.9,en;q=0.8'}
         files={'encoded_image':('product.jpg',raw,content_type or 'image/jpeg')}
         data={'processed_image_dimensions':'1200,1200'}
-        r=requests.post('https://lens.google.com/v3/upload?ep=ccm&s=&st=1',files=files,data=data,headers=headers,timeout=25,allow_redirects=False)
+        r=requests.post('https://lens.google.com/v3/upload?ep=ccm&s=&st=1',files=files,data=data,headers=headers,timeout=8,allow_redirects=False)
         loc=r.headers.get('location')
         if not loc:
             # Some deployments return the result HTML directly.
             loc=r.url if r.status_code in (200,302,303) else None
         if not loc:return {'enabled':True,'results':[],'error':'Google Lens no devolvió una URL de resultados'}
-        rr=requests.get(loc,headers=headers,timeout=25,allow_redirects=True)
+        rr=requests.get(loc,headers=headers,timeout=8,allow_redirects=True)
         from bs4 import BeautifulSoup
         soup=BeautifulSoup(rr.text,'html.parser')
         results=[]; seen=set()
@@ -236,20 +236,6 @@ async def identify_endpoint(query:str=Form(''),asin:str=Form(''),ean:str=Form(''
   p=identify('data:'+(image.content_type or 'image/jpeg')+';base64,'+base64.b64encode(raw).decode())
   if p.get('error'): return {'error':p['error']}
   base.update({'name':p.get('name') or p.get('model') or base['name'], 'brand':p.get('brand'), 'model':p.get('model'), 'asin':get_asin(p.get('asin','')) or base['asin'], 'ean':get_code(p.get('ean_or_gtin','')) or base['ean']})
- if not base['name'] and not base['asin'] and not base['ean'] and image and image.filename and not OPENAI_API_KEY:
-  try:
-   raw=await image.read()
-   vis=google_lens_search(raw,image.content_type or 'image/jpeg')
-   candidates=[]
-   if vis.get('page_title'): candidates.append(vis['page_title'])
-   candidates += [x.get('title','') for x in (vis.get('results') or []) if x.get('title')]
-   # Pick the first useful non-Google result title as a candidate.
-   for cand in candidates:
-    cand=re.sub(r'Google Lens|Lens','',cand,flags=re.I).strip(' -|')
-    if len(cand)>=4:
-     base['name']=cand[:180]; base['visual_candidates']=vis.get('results',[])[:10]; break
-  except Exception as e:
-   base['visual_error']=str(e)
  if not base['name'] and not base['asin'] and not base['ean']:
   return {'error':'No he podido identificar el producto automáticamente. Prueba una foto más cercana o añade marca/modelo/EAN.'}
  base['title']=base['name'] or base['asin'] or ('EAN '+base['ean'] if base.get('ean') else '')
@@ -268,13 +254,11 @@ async def identify_endpoint(query:str=Form(''),asin:str=Form(''),ean:str=Form(''
     })
     base['title']=db.get('title') or base.get('title')
     base['db_prices']=db.get('prices') or []
-   ean_queries=['EAN '+base['ean'], '"'+base['ean']+'"', base['ean']+' producto']
-   if base.get('brand'): ean_queries.append(base['brand']+' '+base['ean'])
-   if base.get('model'): ean_queries.append(base['model']+' '+base['ean'])
-   ean_results=[]
-   for eq in ean_queries:
-    ean_results.extend(web_discover(eq))
-    if len(ean_results)>=20: break
+   # Una sola búsqueda combinada evita que un EAN haga esperar varias búsquedas web consecutivas.
+   parts=[base['ean']]
+   if base.get('brand'): parts.append(base['brand'])
+   if base.get('model'): parts.append(base['model'])
+   ean_results=web_discover(' '.join(parts))
    seen=set(); unique=[]
    for rr in ean_results:
     if rr.get('url') not in seen: seen.add(rr.get('url')); unique.append(rr)
@@ -306,42 +290,53 @@ async def markets_endpoint(payload:dict):
  ean=get_code(str(payload.get('ean') or ''))
  selected=payload.get('markets') or list(MARKETS.keys())
  selected=[x for x in selected if x in MARKETS] or ['ES']
+ from concurrent.futures import ThreadPoolExecutor, as_completed
  rows=[]
- for mk in selected:
+ def one(mk):
   x=market_lookup(mk,asin,ean,title)
-  price=x.get('buy_box') or x.get('new_price') or x.get('amazon_price')
-  x['price']=price
-  rows.append(x)
+  x['price']=x.get('buy_box') or x.get('new_price') or x.get('amazon_price')
+  return x
+ # Los mercados se consultan en paralelo; antes se hacían uno detrás de otro.
+ with ThreadPoolExecutor(max_workers=min(6,len(selected))) as ex:
+  futs=[ex.submit(one,mk) for mk in selected]
+  for fut in as_completed(futs):
+   try: rows.append(fut.result())
+   except Exception: pass
+ order={mk:i for i,mk in enumerate(selected)}
+ rows.sort(key=lambda x:order.get(x.get('market'),999))
  return {'markets':rows}
 
 def web_discover(q):
  if not q:return []
  h={'User-Agent':'Mozilla/5.0 (Android 14; Mobile) AppleWebKit/537.36 Chrome/136 Mobile Safari/537.36','Accept-Language':'es-ES,es;q=0.9,en;q=0.8'}
  from bs4 import BeautifulSoup
- out=[]
- # Try several public search pages. Any one may be unavailable from a hosting provider.
  attempts=[
    ('https://www.google.com/search',{'q':q,'hl':'es'}),
    ('https://www.bing.com/search',{'q':q,'setlang':'es-ES'}),
    ('https://html.duckduckgo.com/html/',{'q':q})
  ]
- for url,params in attempts:
+ def one(item):
+  url,params=item
   try:
-   rr=requests.get(url,params=params,headers=h,timeout=8)
-   if not rr.ok: continue
-   soup=BeautifulSoup(rr.text,'html.parser')
-   selectors=['a.result__a','li.b_algo h2 a','div.MjjYud a']
-   found=[]
-   for sel in selectors:
+   rr=requests.get(url,params=params,headers=h,timeout=3)
+   if not rr.ok:return []
+   soup=BeautifulSoup(rr.text,'html.parser'); found=[]
+   for sel in ['a.result__a','li.b_algo h2 a','div.MjjYud a']:
     for a in soup.select(sel):
      href=a.get('href',''); title=a.get_text(' ',strip=True)
      if href.startswith('http') and title and len(title)>2:
       found.append({'title':title[:240],'url':href,'snippet':''})
+   return found
+  except Exception:return []
+ out=[]; seen=set()
+ from concurrent.futures import ThreadPoolExecutor
+ with ThreadPoolExecutor(max_workers=3) as ex:
+  for found in ex.map(one,attempts):
    for x in found:
-    if x['url'] not in {z['url'] for z in out}: out.append(x)
+    if x['url'] not in seen:
+     seen.add(x['url']); out.append(x)
+    if len(out)>=15: break
    if len(out)>=15: break
-  except Exception:
-   continue
  return out[:15]
 
 def web_fallback_links(title):
