@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PorCuanto V20 · Identificación visual + comparación web</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#080d18;color:#f4f7fb;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:760px;margin:auto;padding:16px}.top{padding:8px 0 15px}.logo{font-size:30px;font-weight:950}.logo em{color:#67e8f9;font-style:normal}.muted{color:#96a4ba;font-size:12px}.card{background:#121a2c;border:1px solid #27334c;border-radius:20px;padding:15px;margin:11px 0}
+h2{font-size:17px;margin:0 0 12px}label{color:#96a4ba;font-size:12px;display:block;margin:7px 0 5px}
+input,select,button{width:100%;border:1px solid #2a3751;background:#0b1220;color:#fff;border-radius:12px;padding:12px;font-size:15px}
+button{background:#67e8f9;color:#061018;border:0;font-weight:900}.secondary{background:#222d43;color:#fff}.danger{background:#3a1f28;color:#fff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.full{grid-column:1/-1}
+.cam{display:grid;grid-template-columns:1fr 1fr;gap:9px}.cam button{min-height:54px}
+video{width:100%;border-radius:15px;background:#000;display:none;margin-top:10px;max-height:330px;object-fit:cover}
+.preview{width:100%;max-height:300px;object-fit:contain;border-radius:15px;background:#090e18;display:none;margin-top:10px}
+.stage{padding:13px;background:#0b1220;border-radius:14px;margin:8px 0}.bar{height:7px;background:#27334c;border-radius:10px;overflow:hidden;margin:10px 0}.bar i{display:block;height:100%;width:40%;background:#67e8f9;animation:go 1s infinite}@keyframes go{from{transform:translateX(-120%)}to{transform:translateX(300%)}}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kpi{background:#0b1220;border:1px solid #27334c;border-radius:13px;padding:11px}.kpi span{display:block;color:#96a4ba;font-size:11px}.kpi b{display:block;font-size:21px;margin-top:3px}
+.verdict{text-align:center;font-size:24px;font-weight:950;padding:15px;border-radius:15px;background:#0b1220;margin-bottom:10px}.good{border:1px solid #57e389}.warn{border:1px solid #ffd166}.bad{border:1px solid #ff6b6b}
+.market,.webrow{display:flex;gap:8px;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #27334c}.market:last-child,.webrow:last-child{border:0}.market b{font-size:17px}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:7px}.checks label{margin:0;padding:9px;background:#0b1220;border:1px solid #27334c;border-radius:10px;color:#fff}
+a{color:#67e8f9}.hidden{display:none}.smallbtn{padding:9px;font-size:13px}
+@media(max-width:520px){.grid{grid-template-columns:1fr}.full{grid-column:auto}}
+</style><script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body><main>
+<div class="top"><div class="logo">💶 PorCuanto <em>V20</em></div><div class="muted">Arbitraje rápido · Amazon · eBay · mercadillos</div></div>
+
+<section class="card">
+<h2>📸 1. Encuentra el producto</h2>
+<div class="cam">
+<button id="startCam" type="button">📷 ABRIR CÁMARA</button>
+<button class="secondary" id="take" type="button" disabled>⭕ HACER FOTO</button>
+<button class="secondary" id="phoneCam" type="button">📱 CÁMARA DEL TELÉFONO</button>
+</div>
+<video id="video" playsinline></video>
+<canvas id="canvas" class="hidden"></canvas>
+<img id="preview" class="preview">
+<input id="photo" type="file" accept="image/*" capture="environment" style="margin-top:9px">
+<div id="cameraHelp" class="stage" style="margin-top:10px;display:none"></div>
+<div id="photoInfo" class="muted">Puedes fotografiar un producto con o sin código de barras.</div>
+</section>
+
+<section class="card">
+<h2>🔢 Si existe, usa el código</h2>
+<div class="grid">
+<div><label>EAN / UPC / GTIN</label><input id="ean" inputmode="numeric" placeholder="Ej. 8412345678901"></div>
+<div><label>ASIN</label><input id="asin" placeholder="B0XXXXXXXX"></div>
+<div class="full"><label>Marca, modelo o descripción</label><input id="query" placeholder="Ej. cámara Mikona Super Color 110"></div>
+</div>
+</section>
+
+<section class="card">
+<h2>💶 2. Precio al que te lo venden</h2>
+<div class="grid">
+<div><label>Compra (€)</label><input id="cost" type="number" step=".01" value="10"></div>
+<div><label>Comisión (%)</label><input id="commission" type="number" step=".1" value="15"></div>
+<div><label>Envío (€)</label><input id="shipping" type="number" step=".01" value="0"></div>
+<div><label>Otros costes (€)</label><input id="other" type="number" step=".01" value="0"></div>
+</div>
+</section>
+
+<section class="card">
+<h2>🌍 3. Mercados</h2>
+<div class="checks">
+<label><input type="checkbox" name="market" value="ES" checked> 🇪🇸 España</label>
+<label><input type="checkbox" name="market" value="DE" checked> 🇩🇪 Alemania</label>
+<label><input type="checkbox" name="market" value="FR" checked> 🇫🇷 Francia</label>
+<label><input type="checkbox" name="market" value="IT" checked> 🇮🇹 Italia</label>
+<label><input type="checkbox" name="market" value="UK"> 🇬🇧 Reino Unido</label>
+<label><input type="checkbox" name="market" value="NL"> 🇳🇱 Países Bajos</label>
+</div>
+</section>
+
+
+<section class="card">
+<h2>⚙️ Conectar APIs — opcional</h2>
+<div class="muted" style="margin-bottom:10px">PorCuanto funciona sin APIs usando búsqueda pública. Las APIs añaden datos más directos y fiables.</div>
+<div id="apiStatus" class="stage">Comprobando configuración…</div>
+<button id="apiGuide" class="secondary smallbtn" style="margin-top:9px">📖 VER GUÍA PASO A PASO</button>
+<div id="apiHelp" class="hidden" style="margin-top:12px">
+  <div class="stage">
+  <b>1 · OpenAI (para analizar fotos)</b>
+  <p class="muted">Crea una API key en la plataforma de OpenAI y configúrala en el servidor como <code>OPENAI_API_KEY</code>.</p>
+  <p><a target="_blank" href="https://platform.openai.com/api-keys">Abrir API Keys de OpenAI ↗</a></p>
+  <p class="muted">Importante: la suscripción ChatGPT y la API tienen facturación separada. Tener ChatGPT Go/Plus/Pro no convierte automáticamente la suscripción en saldo de API.</p>
+  </div>
+  <div class="stage">
+  <b>2 · Keepa (Amazon)</b>
+  <p class="muted">Crea una cuenta en Keepa, contrata/activa un plan API y copia tu API key. Configúrala como <code>KEEPA_API_KEY</code>.</p>
+  <p><a target="_blank" href="https://keepa.com/#!api">Abrir Keepa API ↗</a></p>
+  <p class="muted">Keepa usa un sistema de tokens para sus consultas. Puedes usarlo para precios, historial, ofertas y datos de vendedores.</p>
+  </div>
+  <div class="stage">
+  <b>3 · eBay (comparables)</b>
+  <p class="muted">Crea una aplicación en eBay Developers → Application Keys → Production. Copia App ID (Client ID) y Cert ID (Client Secret) y configúralos como <code>EBAY_CLIENT_ID</code> y <code>EBAY_CLIENT_SECRET</code>.</p>
+  <p><a target="_blank" href="https://developer.ebay.com/my/keys">Abrir eBay Application Keys ↗</a></p>
+  <p class="muted">Para búsquedas del Browse API se usa un Application access token; PorCuanto lo genera automáticamente con OAuth.</p>
+  </div>
+  <div class="stage">
+  <b>4 · ¿Dónde pongo las claves?</b>
+  <p class="muted">En el archivo <code>.env</code> del servidor:</p>
+  <pre style="white-space:pre-wrap;background:#080d18;padding:10px;border-radius:10px">OPENAI_API_KEY=tu_clave
+KEEPA_API_KEY=tu_clave
+EBAY_CLIENT_ID=tu_client_id
+EBAY_CLIENT_SECRET=tu_client_secret</pre>
+  <p class="muted">No pongas las claves dentro del HTML ni las compartas públicamente.</p>
+  </div>
+  <button id="testApis" class="smallbtn">🧪 COMPROBAR CONEXIONES</button>
+  <div id="testResult" class="muted" style="margin-top:8px"></div>
+</div>
+</section>
+<button id="analyze">🚀 ANALIZAR OPORTUNIDAD</button>
+<section id="results" class="card hidden"></section>
+</main>
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+const $=x=>document.getElementById(x), esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])), money=v=>v==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(v);
+let stream=null, currentBlob=null;
+
+function showPhoto(blob){
+ currentBlob=blob; $('preview').src=URL.createObjectURL(blob); $('preview').style.display='block';
+ $('photoInfo').textContent='📸 Foto lista. Pulsa ANALIZAR OPORTUNIDAD.';
+}
+async function stopCamera(){
+ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+ $('video').srcObject=null; $('video').style.display='none'; $('take').disabled=true;
+}
+function cameraError(e){
+ const name=e?.name||'Error';
+ const secure=window.isSecureContext;
+ let msg='⚠️ No se pudo abrir la cámara ('+name+'). ';
+ if(name==='NotAllowedError'||name==='SecurityError') msg+='Da permiso a la cámara para este sitio en el navegador.';
+ else if(name==='NotFoundError') msg+='No se encontró una cámara disponible.';
+ else if(name==='NotReadableError') msg+='La cámara está siendo usada por otra aplicación.';
+ else if(name==='OverconstrainedError') msg+='La cámara no admite esos ajustes; probaremos una configuración básica.';
+ else if(!secure || !navigator.mediaDevices) msg+='Esta página necesita HTTPS o localhost para usar la cámara web.';
+ else msg+='Prueba “📱 CÁMARA DEL TELÉFONO” como alternativa.';
+ $('photoInfo').textContent=msg;
+ $('cameraHelp').style.display='block';
+ $('cameraHelp').innerHTML='📱 <b>Alternativa:</b> pulsa <b>CÁMARA DEL TELÉFONO</b>. En Android abrirá la cámara nativa y la foto volverá automáticamente a PorCuanto.';
+}
+async function openCamera(){
+ try{
+  await stopCamera();
+  if(!navigator.mediaDevices?.getUserMedia) throw new Error('getUserMedia no disponible');
+  if(!window.isSecureContext && location.hostname!=='localhost' && location.hostname!=='127.0.0.1') throw new DOMException('Secure context required','SecurityError');
+  let constraints={video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false};
+  try{ stream=await navigator.mediaDevices.getUserMedia(constraints); }
+  catch(e){
+   if(e.name==='OverconstrainedError') stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+   else throw e;
+  }
+  $('video').srcObject=stream; $('video').style.display='block';
+  await $('video').play();
+  $('take').disabled=false; $('cameraHelp').style.display='none';
+  $('photoInfo').textContent='📷 Cámara activa. Centra el producto y pulsa HACER FOTO.';
+ }catch(e){cameraError(e);}
+}
+$('startCam').onclick=openCamera;
+$('phoneCam').onclick=()=>{ $('photo').click(); };
+$('take').onclick=()=>{
+ const v=$('video'), c=$('canvas');
+ if(!v.videoWidth||!v.videoHeight){$('photoInfo').textContent='⚠️ Espera un momento a que aparezca la imagen de la cámara.';return;}
+ c.width=v.videoWidth;c.height=v.videoHeight;
+ c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+ c.toBlob(b=>{showPhoto(b);stopCamera();},'image/jpeg',.82);
+};
+$('photo').onchange=()=>{const f=$('photo').files[0];if(f){stopCamera();showPhoto(f);$('photoInfo').textContent='📸 Foto lista. Pulsa ANALIZAR OPORTUNIDAD.';}};
+window.addEventListener('pagehide',stopCamera);
+
+async function compress(file){
+ const bmp=await createImageBitmap(file), max=1280, scale=Math.min(1,max/Math.max(bmp.width,bmp.height));
+ const c=document.createElement('canvas');c.width=Math.round(bmp.width*scale);c.height=Math.round(bmp.height*scale);c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+ return await new Promise(r=>c.toBlob(r,'image/jpeg',.72));
+}
+async function localImageInfo(file){
+ const out={text:'',ean:''};
+ try{
+  if('BarcodeDetector' in window){
+   const bmp=await createImageBitmap(file); const bd=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128']});
+   const codes=await bd.detect(bmp); if(codes[0]?.rawValue) out.ean=codes[0].rawValue;
+  }
+ }catch(e){}
+ try{
+  if(window.Tesseract){
+   $('photoInfo').textContent='🔎 Leyendo texto de la etiqueta (sin API)…';
+   const r=await Tesseract.recognize(file,'eng+spa',{logger:m=>{if(m.status==='recognizing text'&&m.progress>.1)$('photoInfo').textContent='🔎 Leyendo etiqueta… '+Math.round(m.progress*100)+'%';}});
+   out.text=(r.data.text||'').replace(/\s+/g,' ').trim().slice(0,500);
+  }
+ }catch(e){}
+ return out;
+}
+async function apiFetch(url, options={}, timeoutMs=35000){
+  const ctl=new AbortController(); const timer=setTimeout(()=>ctl.abort(),timeoutMs);
+  try{
+    const r=await fetch(url,{...options,signal:ctl.signal});
+    const ct=r.headers.get('content-type')||'';
+    let data=null;
+    if(ct.includes('application/json')) data=await r.json(); else data=await r.text();
+    if(!r.ok) throw Error((data&&data.error)||('HTTP '+r.status));
+    return data;
+  }catch(e){
+    if(e.name==='AbortError') throw Error('El servidor tardó demasiado en responder.');
+    if(e instanceof TypeError || String(e.message).toLowerCase().includes('failed to fetch'))
+      throw Error('No se puede conectar con el servidor de PorCuanto. Abre la aplicación mediante el servidor (http://localhost:8000), no abriendo index.html directamente.');
+    throw e;
+  }finally{clearTimeout(timer);}
+}
+function serverRequired(){
+  if(location.protocol==='file:') throw Error('PorCuanto necesita su servidor para analizar y comparar productos. No abras index.html directamente; ejecuta el servidor y entra en http://localhost:8000.');
+}
+$('analyze').onclick=async()=>{
+ const res=$('results'), btn=$('analyze');btn.disabled=true;res.classList.remove('hidden');
+ res.innerHTML='<div class="stage"><b>1/3 ⚡ Identificando sin API…</b><div class="bar"><i></i></div><span class="muted">La búsqueda de precios todavía no ha empezado.</span></div>';
+ try{
+  serverRequired();
+  const fd=new FormData();fd.append('query',$('query').value);fd.append('asin',$('asin').value);fd.append('ean',$('ean').value);
+  const file=currentBlob||$('photo').files[0];
+  let local={text:'',ean:''};
+  if(file){ local=await localImageInfo(file); if(local.ean && !$('ean').value) fd.set('ean',local.ean); if(local.text && !$('query').value) fd.set('query',local.text); fd.append('image',await compress(file),'product.jpg'); }
+  // Primero intentamos identificación visual real, sin exigir una API de IA.
+  let visual={results:[],page_title:'',description:''};
+  if(file){
+    $('photoInfo').textContent='👁️ Buscando coincidencias visuales en la web…';
+    try{
+      const vf=new FormData();vf.append('image',await compress(file),'product.jpg');
+      visual=await apiFetch('/api/visual-search',{method:'POST',body:vf},45000);
+    }catch(e){ visual={results:[],error:e.message}; }
+  }
+  // En paralelo, OCR/código y OpenAI opcional afinan el nombre.
+  const id=await apiFetch('/api/identify',{method:'POST',body:fd},45000);
+  if(id.error)throw Error(id.error);
+  let title=id.title||id.product?.name||'';
+  if(!title && visual.page_title) title=visual.page_title.replace(/Google Lens|Lens/gi,'').trim();
+  if(!title && visual.results?.[0]?.title) title=visual.results[0].title;
+  if(!title) title=$('query').value||'Producto';
+  res.innerHTML='<div class="stage"><b>2/3 🔎 '+esc(title)+'</b><div class="muted">'+(id.ean?'EAN '+esc(id.ean):id.asin?'ASIN '+esc(id.asin):'Sin código · modo mercadillo')+'</div><div class="bar"><i></i></div><span class="muted">Buscando mercados…</span></div>';
+  const markets=[...document.querySelectorAll('input[name="market"]:checked')].map(x=>x.value);
+  const md=await apiFetch('/api/markets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,asin:id.asin,ean:id.ean,markets})},45000);
+  // Public web discovery is deliberately secondary and non-blocking.
+  const dw=apiFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,queries:id.search_queries||[title]})},30000).catch(()=>({results:[]}));
+  const buy=+($('cost').value||0), comm=+($('commission').value||15), ship=+($('shipping').value||0), other=+($('other').value||0);
+  let rows=(md.markets||[]).filter(x=>x.price!=null).map(x=>{let sale=+x.price,fees=sale*comm/100+ship+other;return {...x,sale,fees,profit:sale-buy-fees,roi:buy?(sale-buy-fees)/buy*100:0,max:sale-fees}}).sort((a,b)=>b.roi-a.roi);
+  const best=rows[0];
+  let verdict=!best?'⚪ FALTAN DATOS':best.profit>=10&&best.roi>=30?'🟢 OPORTUNIDAD':best.profit>0&&best.roi>=15?'🟡 ESTUDIAR':'🔴 NO COMPRAR';
+  res.innerHTML='<div class="stage"><b>3/3 💰 Resultado</b></div><div class="verdict '+(verdict.includes('OPORTUNIDAD')?'good':verdict.includes('ESTUDIAR')?'warn':'bad')+'">'+verdict+'</div>'+
+   '<h2>📦 '+esc(title)+'</h2><div class="kpis"><div class="kpi"><span>Compra</span><b>'+money(buy)+'</b></div><div class="kpi"><span>Mejor venta</span><b>'+money(best?.sale)+'</b></div><div class="kpi"><span>Beneficio</span><b>'+money(best?.profit)+'</b></div><div class="kpi"><span>ROI</span><b>'+(best?best.roi.toFixed(1)+'%':'—')+'</b></div><div class="kpi"><span>Máximo pagar</span><b>'+money(best?.max)+'</b></div><div class="kpi"><span>Mejor mercado</span><b>'+esc(best?.name||'—')+'</b></div></div>'+
+   '<h2 style="margin-top:17px">🌍 Amazon/mercados</h2>'+(rows.length?rows.map(x=>'<div class="market"><span>'+esc(x.name||x.market)+'</span><b>'+money(x.sale)+'</b></div>').join(''):'<div class="muted">No hay precio disponible todavía. Comprueba las claves/API o utiliza búsqueda web.</div>')+
+   '<div id="web"><h2 style="margin-top:17px">🌐 Internet · comparables</h2><div class="muted">Buscando referencias públicas…</div></div>'+
+   '<p class="muted">No confundas precio anunciado con precio realmente vendido. Comprueba restricciones, comisiones, logística, impuestos y autenticidad antes de comprar.</p>';
+  const wd=await dw;const web=$('web');
+  const visualHtml=(visual.results||[]).slice(0,8).map(x=>'<div class="webrow"><span>🔎 <a target="_blank" rel="noopener" href="'+x.url+'">'+esc(x.title)+'</a></span></div>').join('');
+  const qurl=encodeURIComponent(title);
+  const fallback='<div class="webrow"><b>⚡ Búsqueda directa:</b> <a target="_blank" href="https://www.google.com/search?q='+qurl+'">Google</a> · <a target="_blank" href="https://www.bing.com/search?q='+qurl+'">Bing</a> · <a target="_blank" href="https://www.amazon.es/s?k='+qurl+'">Amazon.es</a> · <a target="_blank" href="https://www.ebay.es/sch/i.html?_nkw='+qurl+'">eBay</a> · <a target="_blank" href="https://es.wallapop.com/app/search?keywords='+qurl+'">Wallapop</a></div>';
+  const webRows=(wd.results||[]).slice(0,10).map(x=>'<div class="webrow"><span><a target="_blank" rel="noopener" href="'+x.url+'">'+esc(x.title)+'</a><small class="muted" style="display:block">'+esc(x.snippet||'')+'</small></span></div>').join('');
+  const allPrices=[...(wd.prices||[]),...(id.web_prices||[])].filter(v=>Number.isFinite(v)&&v>2&&v<10000);
+  const med=allPrices.length?allPrices.slice().sort((a,b)=>a-b)[Math.floor(allPrices.length/2)]:null;
+  const priceBox=med?'<div class="stage"><b>💶 Precio observado en la web</b><br><span style="font-size:24px;font-weight:900">'+money(med)+'</span><div class="muted">Mediana de precios detectados en resultados públicos; úsala como referencia, no como precio garantizado de venta.</div></div>':'';
+  if(web)web.innerHTML='<h2 style="margin-top:17px">👁️ Coincidencias visuales</h2>'+(visualHtml||'<div class="muted">No se pudo obtener una coincidencia visual automática. Se continúa con texto/código y búsqueda web.</div>')+priceBox+'<h2 style="margin-top:17px">🌐 Internet · comparables</h2>'+(webRows||'<div class="muted">El servidor no ha podido extraer resultados automáticamente.</div>')+fallback;
+ }catch(e){res.innerHTML='<div class="stage"><b>❌ '+esc(e.message)+'</b><p class="muted">Si has hecho una foto, no necesitas repetirla. Revisa la configuración del servidor/API y vuelve a pulsar analizar.</p></div>'}
+ btn.disabled=false;
+};
+
+async function refreshApiStatus(){
+ try{
+  const c=await apiFetch('/api/config',{},8000);
+  $('apiStatus').innerHTML=
+   (c.openai?'🟢 OpenAI conectado':'⚪ OpenAI no configurado')+' · '+
+   (c.keepa?'🟢 Keepa conectado':'⚪ Keepa no configurado')+' · '+
+   (c.ebay?'🟢 eBay conectado':'⚪ eBay no configurado')+' · 🟢 Búsqueda web disponible';
+ }catch(e){$('apiStatus').innerHTML='🔴 <b>Servidor no conectado.</b><br><span class="muted">Ejecuta PorCuanto con su servidor y abre <b>http://localhost:8000</b>.</span>'}
+}
+$('apiGuide').onclick=()=>{$('apiHelp').classList.toggle('hidden');};
+$('testApis').onclick=async()=>{
+ $('testResult').textContent='⏳ Probando…';
+ try{
+  const d=await apiFetch('/api/test-apis',{method:'POST'},15000);
+  $('testResult').innerHTML=(d.openai?'🟢 OpenAI':'🔴 OpenAI')+' · '+(d.keepa?'🟢 Keepa':'🔴 Keepa')+' · '+(d.ebay?'🟢 eBay':'🔴 eBay')+
+   (Object.keys(d.errors||{}).length?'<br>'+Object.entries(d.errors).map(([k,v])=>esc(k)+': '+esc(v)).join('<br>'):'');
+ }catch(e){$('testResult').textContent='❌ No se pudo comprobar el servidor.'}
+};
+refreshApiStatus();
+</script></body></html>

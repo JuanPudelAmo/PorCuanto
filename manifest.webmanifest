@@ -1,0 +1,13 @@
+{
+  "name": "PorCuanto",
+  "short_name": "PorCuanto",
+  "description": "Identifica productos y compara precios para valorar oportunidades de compra y reventa.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080d1d",
+  "theme_color": "#61dff4",
+  "lang": "es-ES",
+  "icons": [
+    {"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
